@@ -1,30 +1,29 @@
+# messaging.py
+from kyber_py.kyber.kyber import Kyber
+from kyber_py.kyber.default_parameters import DEFAULT_PARAMETERS
 from Crypto.Cipher import AES
-from Crypto.Random import get_random_bytes
-import base64
+from Crypto.Util.Padding import pad, unpad
 
-# Generate random AES key (256-bit)
-key = get_random_bytes(32)
+class PQCMessenger:
+    def __init__(self, parameter_set="kyber_512"):
+        self.kyber = Kyber(DEFAULT_PARAMETERS[parameter_set])
 
-def encrypt_message(message, key):
-    cipher = AES.new(key, AES.MODE_EAX)
-    ciphertext, tag = cipher.encrypt_and_digest(message.encode())
-    return (base64.b64encode(cipher.nonce).decode(),
-            base64.b64encode(ciphertext).decode(),
-            base64.b64encode(tag).decode())
+    def generate_keys(self):
+        return self.kyber.keygen()
 
-def decrypt_message(nonce, ciphertext, tag, key):
-    nonce = base64.b64decode(nonce)
-    ciphertext = base64.b64decode(ciphertext)
-    tag = base64.b64decode(tag)
-    cipher = AES.new(key, AES.MODE_EAX, nonce=nonce)
-    plaintext = cipher.decrypt_and_verify(ciphertext, tag)
-    return plaintext.decode()
+    def encapsulate(self, pk):
+        return self.kyber.encaps(pk)
 
-# Test
-if __name__ == "__main__":
-    msg = "Testing messaging encryption and decryption"
-    nonce, ciphertext, tag = encrypt_message(msg, key)
-    print(f"Encrypted: {ciphertext}")
+    def decapsulate(self, sk, ciphertext):
+        return self.kyber.decaps(sk, ciphertext)
 
-    decrypted = decrypt_message(nonce, ciphertext, tag, key)
-    print(f"Decrypted: {decrypted}")
+    def aes_encrypt(self, key, plaintext: bytes):
+        aes_key = key[:32]
+        cipher = AES.new(aes_key, AES.MODE_CBC)
+        ct_bytes = cipher.encrypt(pad(plaintext, AES.block_size))
+        return ct_bytes, cipher.iv
+
+    def aes_decrypt(self, key, ciphertext: bytes, iv: bytes):
+        aes_key = key[:32]
+        cipher = AES.new(aes_key, AES.MODE_CBC, iv=iv)
+        return unpad(cipher.decrypt(ciphertext), AES.block_size)
